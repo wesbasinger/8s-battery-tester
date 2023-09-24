@@ -20,8 +20,15 @@ uint16_t val[4];
 uint32_t last = 0, now = 0;
 
 float CELL_VOLTAGE = 3.0;
+float CELL_TOLERANCE = 0.05;
+int R1 = 10000;
+int R2 = 1500;
 
-bool results[8];
+int ratio = R2 / (R1 + R2);
+
+
+bool results[16];
+int resultIdx = 0;
 
 void setup()
 {
@@ -54,6 +61,29 @@ void setup()
 void loop()
 {
   // read individual cell voltages using the first two ADC modules
+  for (int i=0; i<2; i++)
+  {
+    // now read from each ADC
+    for (int j=0; j<4; j++)
+    {
+      // relay pin started at 2, adc could be 0 or 1
+      int relayPin = i*4 + j + 2;
+      bool goodVoltage = checkCellVoltage(relayPin, i, j);
+      if (goodVoltage) 
+      {
+        results[resultIdx] = true;
+      } else 
+      {
+        results[resultIdx] = false;
+      }
+      resultsIdx ++;
+    }
+  }
+  // check voltage divider circuits, 2nd two ADC modules
+  for (int i=2; i<4; i++)
+  {
+    for (int
+  }
 }
 
 bool checkCellVoltage(int relayPin, int adsMaster, int adsPin)
