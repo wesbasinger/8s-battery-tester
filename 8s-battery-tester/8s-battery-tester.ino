@@ -15,9 +15,6 @@
 
 
 ADS1114 ADS[4];
-uint16_t val[4];
-
-uint32_t last = 0, now = 0;
 
 float CELL_VOLTAGE = 3.0;
 float CELL_TOLERANCE = 0.05;
@@ -28,7 +25,7 @@ int ratio = R2 / (R1 + R2);
 
 
 bool results[16];
-int resultIdx = 0;
+int resultsIdx = 0;
 
 void setup()
 {
@@ -71,19 +68,53 @@ void loop()
       bool goodVoltage = checkCellVoltage(relayPin, i, j);
       if (goodVoltage) 
       {
-        results[resultIdx] = true;
+        results[resultsIdx] = true;
       } else 
       {
-        results[resultIdx] = false;
+        results[resultsIdx] = false;
       }
       resultsIdx ++;
     }
   }
   // check voltage divider circuits, 2nd two ADC modules
+  // actual test specifies to start with measuring 1 cell, and then ensuring that each successive cell adds a specified amount of voltage
+  int numCells = 1;
   for (int i=2; i<4; i++)
   {
-    for (int
+    for (int j=0; i<4; j++)
+    {
+       float result = ADS[i].readADC(j)*(5/1023);
+       float sourceVoltage = convertDividedVoltage(result);
+       if(sourceVoltage*numCells >  (1-CELL_TOLERANCE) * CELL_VOLTAGE * numCells && sourceVoltage*numCells < (1+CELL_TOLERANCE)*CELL_VOLTAGE * numCells)
+       {
+        results[resultsIdx] = true;
+       } else 
+       {
+        results[resultsIdx] = false;
+       }
+       resultsIdx ++;
+       numCells ++;
+    }
   }
+  for (int i=0; i<8; i++)
+  {
+    if(!results[i])
+    {
+      Serial.print("Result idx ");
+      Serial.print(i);
+      Serial.print(" failed\n");
+      Serial.println("FAILED");
+      delay(20000);
+      break;
+    }
+  }
+  Serial.println("PASSED");
+  delay(20000);
+}
+
+float convertDividedVoltage(float dividedVoltage)
+{
+  return (dividedVoltage * (R1 + R2)) / R2;
 }
 
 bool checkCellVoltage(int relayPin, int adsMaster, int adsPin)
@@ -104,66 +135,13 @@ bool checkCellVoltage(int relayPin, int adsMaster, int adsPin)
   digitalWrite(relayPin, LOW);
   delay(1000);
 
-  if (result >= 0.95*CELL_VOLTAGE && result <= 1.05*CELL_VOLTAGE)
+  if (result >= (1-CELL_TOLERANCE)*CELL_VOLTAGE && result <= (1+CELL_TOLERANCE)*CELL_VOLTAGE)
   {
     Serial.println("Passed");
-    return true
+    return true;
   } else 
   {
     Serial.println("Failed");
     return false;
   }
 }
-
-void ADS_request_all()
-{
-  //  Serial.println(__FUNCTION__);
-  for (int i = 0; i < 4; i++)
-  {
-    if (ADS[i].isConnected()) ADS[i].requestADC(0);
-    delayMicroseconds(200);  // get them evenly spaced in time ...
-  }
-}
-
-
-bool ADS_read_all()
-{
-  //  Serial.println(__FUNCTION__);
-  for (int i = 0; i < 4; i++)
-  {
-    if (ADS[i].isConnected() && ADS[i].isBusy()) return true;
-  }
-  //  Serial.print("IDX:\t");
-  //  Serial.println(idx);
-  for (int i = 0; i < 4; i++)
-  {
-    if (ADS[i].isConnected())
-    {
-      val[i] = ADS[i].getValue();
-    }
-  }
-  ADS_request_all();
-  return false;
-}
-
-
-void ADS_print_all()
-{
-  //  Serial.println(__FUNCTION__);
-  //  print duration since last print.
-  now = millis();
-  Serial.print(now - last);
-  last = now;
-  Serial.println();
-
-  //  PRINT ALL VALUES
-  for (int i = 0; i < 4; i++)
-  {
-    Serial.print(val[i]);
-    Serial.print("\t");
-  }
-  Serial.println();
-}
-
-
-// -- END OF FILE --
