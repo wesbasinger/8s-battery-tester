@@ -14,9 +14,9 @@
 #include "ADS1X15.h"
 
 
-ADS1114 ADS[4];
+ADS1114 ADS[2];
 
-float CELL_VOLTAGE = 3.0;
+float CELL_VOLTAGE = 3.3;
 float CELL_TOLERANCE = 0.05;
 int R1 = 10000;
 int R2 = 1500;
@@ -24,7 +24,7 @@ int R2 = 1500;
 int ratio = R2 / (R1 + R2);
 
 
-bool results[16];
+bool results[8];
 int resultsIdx = 0;
 
 void setup()
@@ -34,7 +34,7 @@ void setup()
   Serial.print("ADS1X15_LIB_VERSION: ");
   Serial.println(ADS1X15_LIB_VERSION);
 
-  for (uint8_t i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 2; i++)
   {
     uint8_t address = 0x48 + i;
     ADS[i] = ADS1114(address);
@@ -44,12 +44,6 @@ void setup()
     Serial.println(ADS[i].begin() ? "connected" : "not connected");
 
     ADS[i].setDataRate(4);        // 0 = slow   4 = medium   7 = fast, but more noise
-
-    // relay pins
-    for (int i=2; i<10; i++)
-    { 
-      pinMode(i, OUTPUT);
-    }
     
   }
 }
@@ -57,59 +51,85 @@ void setup()
 
 void loop()
 {
-  // read individual cell voltages using the first two ADC modules
-  for (int i=0; i<2; i++)
-  {
-    // now read from each ADC
-    for (int j=0; j<4; j++)
-    {
-      // relay pin started at 2, adc could be 0 or 1
-      int relayPin = i*4 + j + 2;
-      bool goodVoltage = checkCellVoltage(relayPin, i, j);
-      if (goodVoltage) 
-      {
-        results[resultsIdx] = true;
-      } else 
-      {
-        results[resultsIdx] = false;
-      }
-      resultsIdx ++;
-    }
+
+  Serial.println("press t to start the test");
+  delay(2000);
+
+  if(Serial.available()>0) {
+    runTest();
   }
+
+}
+
+void runTest()
+{
+
+  Serial.println("Started test");
   // check voltage divider circuits, 2nd two ADC modules
   // actual test specifies to start with measuring 1 cell, and then ensuring that each successive cell adds a specified amount of voltage
   int numCells = 1;
-  for (int i=2; i<4; i++)
+  for (int i=0; i<2; i++)
   {
-    for (int j=0; i<4; j++)
+    Serial.print("Reading ADC ");
+    Serial.print(i+1);
+    Serial.print("\n");
+    delay(500);
+    for (int j=0; j<4; j++)
     {
-       float result = ADS[i].readADC(j)*(5/1023);
-       float sourceVoltage = convertDividedVoltage(result);
+      Serial.print("Reading channel ");
+      Serial.print(j+1);
+      Serial.print("\n");
+      delay(500);
+      int16_t result = ADS[i].readADC(j); // analog result
+      Serial.print("Analog reads: ");
+      Serial.print(result);
+      Serial.print("\n");
+      float factor = ADS[i].toVoltage(1);
+      Serial.print("Divided Voltage: ");
+      Serial.print(factor*result);
+      Serial.print("\n");
+      float sourceVoltage = convertDividedVoltage(factor*result);
+      Serial.print("Source voltage: ");
+      Serial.print(sourceVoltage);
+      Serial.print("\n");
+      delay(1000);
        if(sourceVoltage*numCells >  (1-CELL_TOLERANCE) * CELL_VOLTAGE * numCells && sourceVoltage*numCells < (1+CELL_TOLERANCE)*CELL_VOLTAGE * numCells)
        {
         results[resultsIdx] = true;
+        Serial.println("Cell passed");
        } else 
        {
         results[resultsIdx] = false;
+        Serial.println("Cell failed");
        }
+       delay(1000);
        resultsIdx ++;
        numCells ++;
     }
   }
+
+  Serial.println("Finished reading all cells");
+  delay(1000);
+
   for (int i=0; i<8; i++)
   {
     if(!results[i])
     {
-      Serial.print("Result idx ");
-      Serial.print(i);
+      Serial.print("Cell ");
+      Serial.print(i+1);
       Serial.print(" failed\n");
-      Serial.println("FAILED");
-      delay(20000);
-      break;
+      delay(1000);
+    } else
+    {
+      Serial.print("Cell ");
+      Serial.print(i+1);
+      Serial.print('passed\n');
+      delay(1000);
     }
   }
-  Serial.println("PASSED");
-  delay(20000);
+
+  Serial.println("Press the reset button on the Arduino to restart the test");
+  delay(3600*1000);
 }
 
 float convertDividedVoltage(float dividedVoltage)
