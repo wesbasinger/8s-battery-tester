@@ -16,16 +16,15 @@
 
 ADS1114 ADS[2];
 
-float CELL_VOLTAGE = 3.3;
-float CELL_TOLERANCE = 0.05;
+float CELL_VOLTAGE = 3.75;
+float CELL_TOLERANCE = 0.20;
 int R1 = 10000;
 int R2 = 1500;
 
 int ratio = R2 / (R1 + R2);
 
-
-bool results[8];
-int resultsIdx = 0;
+float voltages[8];
+bool pass = true;
 
 void setup()
 {
@@ -65,9 +64,7 @@ void runTest()
 {
 
   Serial.println("Started test");
-  // check voltage divider circuits, 2nd two ADC modules
-  // actual test specifies to start with measuring 1 cell, and then ensuring that each successive cell adds a specified amount of voltage
-  int numCells = 1;
+  // check voltage divider circuits, two ADC modules, store source voltage into array
   for (int i=0; i<2; i++)
   {
     Serial.print("Reading ADC ");
@@ -92,40 +89,29 @@ void runTest()
       Serial.print("Source voltage: ");
       Serial.print(sourceVoltage);
       Serial.print("\n");
-      delay(1000);
-       if(sourceVoltage*numCells >  (1-CELL_TOLERANCE) * CELL_VOLTAGE * numCells && sourceVoltage*numCells < (1+CELL_TOLERANCE)*CELL_VOLTAGE * numCells)
-       {
-        results[resultsIdx] = true;
-        Serial.println("Cell passed");
-       } else 
-       {
-        results[resultsIdx] = false;
-        Serial.println("Cell failed");
-       }
-       delay(1000);
-       resultsIdx ++;
-       numCells ++;
+      voltages[i*j] = sourceVoltage;
     }
   }
 
   Serial.println("Finished reading all cells");
   delay(1000);
 
-  for (int i=0; i<8; i++)
+  //check that individual cells are in range
+  if (!(voltages[0] > (CELL_VOLTAGE-CELL_TOLERANCE) && voltages[0] < (CELL_VOLTAGE+CELL_TOLERANCE)))
   {
-    if(!results[i])
-    {
-      Serial.print("Cell ");
-      Serial.print(i+1);
-      Serial.print(" failed\n");
-      delay(1000);
-    } else
-    {
-      Serial.print("Cell ");
-      Serial.print(i+1);
-      Serial.print('passed\n');
-      delay(1000);
-    }
+    passed = false;
+    Serial.println("Cell 1 failed");
+  }
+  for (int i=1; i<8; i++)
+  {
+    float currCell = voltages[i] - voltages[i-1];
+      if (!(currCell > (CELL_VOLTAGE-CELL_TOLERANCE) && currCell < (CELL_VOLTAGE+CELL_TOLERANCE)))
+      {
+        passed = false;
+        Serial.print("Cell ");
+        Serial.print(i+1);
+        Serial.print(" failed\n");
+      }
   }
 
   Serial.println("Press the reset button on the Arduino to restart the test");
@@ -135,33 +121,4 @@ void runTest()
 float convertDividedVoltage(float dividedVoltage)
 {
   return (dividedVoltage * (R1 + R2)) / R2;
-}
-
-bool checkCellVoltage(int relayPin, int adsMaster, int adsPin)
-{
-  Serial.print("Checking battery ");
-  Serial.print(relayPin - 1);
-  Serial.print("\n");
-
-  digitalWrite(relayPin, HIGH);
-  delay(2000);
-
-  float result = ADS[adsMaster].readADC(adsPin)*(5/1023);
-
-  Serial.print("Read cell voltage as: ");
-  Serial.print(result);
-  Serial.print("\n");
-
-  digitalWrite(relayPin, LOW);
-  delay(1000);
-
-  if (result >= (1-CELL_TOLERANCE)*CELL_VOLTAGE && result <= (1+CELL_TOLERANCE)*CELL_VOLTAGE)
-  {
-    Serial.println("Passed");
-    return true;
-  } else 
-  {
-    Serial.println("Failed");
-    return false;
-  }
 }
