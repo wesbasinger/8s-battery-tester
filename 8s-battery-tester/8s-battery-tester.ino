@@ -113,6 +113,23 @@ void runTest()
         Serial.print(" failed\n");
       }
   }
+  // confirm that the cumulative voltages stay in range
+  float combVoltage = 0;
+  for (int i=0; i<8; i++)
+  {
+   if (!((voltage[i] - combVoltage > CELL_VOLTAGE - CELL_TOLERANCE) && (voltage[i] < CELL_TOLERANCE + CELL_VOLTAGE)))
+   {
+     passed = false;
+     Serial.print("Cell ");
+     Serial.print(i+1);
+     Serial.print(" failed\n");
+   }
+  }
+
+  if(passed) 
+  {
+    Serial.println("PASSED ALL TESTS!!!");
+  }
 
   Serial.println("Press the reset button on the Arduino to restart the test");
   delay(3600*1000);
