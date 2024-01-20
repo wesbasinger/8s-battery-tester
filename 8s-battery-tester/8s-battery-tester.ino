@@ -1,141 +1,93 @@
 //
-//    FILE: ADS_1114_four.ino
+//    FILE: ADS_read.ino
 //  AUTHOR: Rob.Tillaart
-// PURPOSE: demo reading four ADS1114 modules in parallel
+// PURPOSE: read analog inputs - straightforward.
 //     URL: https://github.com/RobTillaart/ADS1X15
-
-
-// Note all IO with the sensors are guarded by an isConnected()
-// this is max robust, in non critical application one may either
-// cache the value or only verify it in setup (least robust).
-// Less robust may cause the application to hang - watchdog reset ?
-
 
 #include "ADS1X15.h"
 
+ADS1115 ALPHA_ADS(0x48);
+ADS1115 BRAVO_ADS(0x49);
 
-ADS1114 ADS[2];
+int16_t analogValues[8];
+float converted[8];
 
-float CELL_VOLTAGE = 3.75;
-float CELL_TOLERANCE = 0.20;
-int R1 = 10000;
-int R2 = 1500;
+float cellVoltage = 3.3;
 
-int ratio = R2 / (R1 + R2);
-
-float voltages[8];
-bool pass = true;
-
-void setup()
+void setup() 
 {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println(__FILE__);
   Serial.print("ADS1X15_LIB_VERSION: ");
   Serial.println(ADS1X15_LIB_VERSION);
 
-  for (uint8_t i = 0; i < 2; i++)
-  {
-    uint8_t address = 0x48 + i;
-    ADS[i] = ADS1114(address);
-
-    Serial.print(address, HEX);
-    Serial.print("  ");
-    Serial.println(ADS[i].begin() ? "connected" : "not connected");
-
-    ADS[i].setDataRate(4);        // 0 = slow   4 = medium   7 = fast, but more noise
-    
-  }
+  Wire.begin();
+  ALPHA_ADS.begin();
+  BRAVO_ADS.begin();
 }
 
 
-void loop()
+void loop() 
 {
+  ALPHA_ADS.setGain(0);
+  BRAVO_ADS.setGain(0);
 
-  Serial.println("press t to start the test");
+  int masterIdx = 0;
+
+  for(int i=0; i<4; i++)
+  {
+    analogValues[masterIdx] = ALPHA_ADS.readADC(i);
+    masterIdx ++;
+  }
+
+  
+  for(int i=0; i<4; i++)
+  {
+    analogValues[masterIdx] = BRAVO_ADS.readADC(i);
+    masterIdx ++;
+  }
+
+  float f = ALPHA_ADS.toVoltage(1);  //  voltage factor
+
+  Serial.println("RAW VALUES");
+
+  for(int i=0; i<8; i++)
+  {
+    Serial.println(analogValues[i]);
+  }
   delay(2000);
 
-  if(Serial.available()>0) {
-    runTest();
-  }
+  Serial.println();
 
-}
+  Serial.println("CONVERTED VALUES");
 
-void runTest()
-{
-
-  Serial.println("Started test");
-  // check voltage divider circuits, two ADC modules, store source voltage into array
-  for (int i=0; i<2; i++)
+  for(int i=0; i<8; i++)
   {
-    Serial.print("Reading ADC ");
-    Serial.print(i+1);
-    Serial.print("\n");
-    delay(500);
-    for (int j=0; j<4; j++)
+    float v = analogValues[i]*f;
+    float _converted = (23*v)/3;
+    converted[i] = _converted;
+    Serial.println(_converted);
+  }
+  delay(2000);
+
+  Serial.println();
+
+  for(int i=0; i<8; i++)
+  {
+    float targetVoltage = (i+1)*cellVoltage;
+    if(converted[i] < 1.06*targetVoltage && converted[i] > 0.94*targetVoltage)
     {
-      Serial.print("Reading channel ");
-      Serial.print(j+1);
-      Serial.print("\n");
-      delay(500);
-      int16_t result = ADS[i].readADC(j); // analog result
-      Serial.print("Analog reads: ");
-      Serial.print(result);
-      Serial.print("\n");
-      float factor = ADS[i].toVoltage(1);
-      Serial.print("Divided Voltage: ");
-      Serial.print(factor*result);
-      Serial.print("\n");
-      float sourceVoltage = convertDividedVoltage(factor*result);
-      Serial.print("Source voltage: ");
-      Serial.print(sourceVoltage);
-      Serial.print("\n");
-      voltages[i*j] = sourceVoltage;
+      Serial.print("Cell ");
+      Serial.print(i+1);
+      Serial.print(" in tolerance\n");
+    } 
+    else
+    {
+      Serial.println("VOLTAGE CHECK FAILED!!!");
     }
   }
-
-  Serial.println("Finished reading all cells");
-  delay(1000);
-
-  //check that individual cells are in range
-  if (!(voltages[0] > (CELL_VOLTAGE-CELL_TOLERANCE) && voltages[0] < (CELL_VOLTAGE+CELL_TOLERANCE)))
-  {
-    passed = false;
-    Serial.println("Cell 1 failed");
-  }
-  for (int i=1; i<8; i++)
-  {
-    float currCell = voltages[i] - voltages[i-1];
-      if (!(currCell > (CELL_VOLTAGE-CELL_TOLERANCE) && currCell < (CELL_VOLTAGE+CELL_TOLERANCE)))
-      {
-        passed = false;
-        Serial.print("Cell ");
-        Serial.print(i+1);
-        Serial.print(" failed\n");
-      }
-  }
-  // confirm that the cumulative voltages stay in range
-  float combVoltage = 0;
-  for (int i=0; i<8; i++)
-  {
-   if (!((voltage[i] - combVoltage > CELL_VOLTAGE - CELL_TOLERANCE) && (voltage[i] < CELL_TOLERANCE + CELL_VOLTAGE)))
-   {
-     passed = false;
-     Serial.print("Cell ");
-     Serial.print(i+1);
-     Serial.print(" failed\n");
-   }
-  }
-
-  if(passed) 
-  {
-    Serial.println("PASSED ALL TESTS!!!");
-  }
-
-  Serial.println("Press the reset button on the Arduino to restart the test");
-  delay(3600*1000);
-}
-
-float convertDividedVoltage(float dividedVoltage)
-{
-  return (dividedVoltage * (R1 + R2)) / R2;
+  Serial.println("HIT NANO RESET BUTTON TO REDO TEST");
+  Serial.println("RESETS AUTOMATICALLY IN 20 SECONDS");
+  delay(20000);
+  
 }
